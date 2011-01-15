@@ -14,4 +14,5 @@ type token =
   (* control *)
   | If | Then | Else
   | For | In
-
+  (* operators *)
+  | Binary | Unary

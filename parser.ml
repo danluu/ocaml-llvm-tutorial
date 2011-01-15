@@ -35,22 +35,22 @@ let rec parse_primary = parser
       | [< >] -> accumulator
     in
     let rec parse_ident id = parser
-        (* Call. *)
+      (* Call. *)
       | [< 'Token.Kwd '(';
-             args=parse_args [];
-             'Token.Kwd ')' ?? "expected ')'">] ->
-            Ast.Call (id, Array.of_list (List.rev args))
+           args=parse_args [];
+           'Token.Kwd ')' ?? "expected ')'">] ->
+        Ast.Call (id, Array.of_list (List.rev args))
 
-        (* Simple variable ref. *)
+      (* Simple variable ref. *)
       | [< >] -> Ast.Variable id
     in
-      parse_ident id stream
+    parse_ident id stream
 
   (* ifexpr ::= 'if' expr 'then' expr 'else' expr *)
   | [< 'Token.If; c=parse_expr;
        'Token.Then ?? "expected 'then'"; t=parse_expr;
        'Token.Else ?? "expected 'else'"; e=parse_expr >] ->
-      Ast.If (c, t, e)
+    Ast.If (c, t, e)
 
   (* forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression *)
   | [< 'Token.For;
@@ -59,10 +59,10 @@ let rec parse_primary = parser
        stream >] ->
     begin parser
       | [<
-             start=parse_expr;
-             'Token.Kwd ',' ?? "expected ',' after for";
-          end_=parse_expr;
-             stream >] ->
+        start=parse_expr;
+        'Token.Kwd ',' ?? "expected ',' after for";
+        end_=parse_expr;
+        stream >] ->
         let step =
           begin parser
             | [< 'Token.Kwd ','; step=parse_expr >] -> Some step
@@ -71,21 +71,31 @@ let rec parse_primary = parser
         in
         begin parser
           | [< 'Token.In; body=parse_expr >] ->
-                Ast.For (id, start, end_, step, body)
-            | [< >] ->
-                raise (Stream.Error "expected 'in' after for")
+            Ast.For (id, start, end_, step, body)
+          | [< >] ->
+            raise (Stream.Error "expected 'in' after for")
         end stream
       | [< >] ->
-            raise (Stream.Error "expected '=' after for")
+        raise (Stream.Error "expected '=' after for")
     end stream
 
   | [< >] -> raise (Stream.Error "unknown token when expecting an expression.")
+
+(* unary
+ *   ::= primary
+ *   ::= '!' unary *)
+and parse_unary = parser
+  (* If this is a unary operator, read it. *)
+  | [< 'Token.Kwd op when op != '(' && op != ')'; operand=parse_expr >] ->
+		Ast.Unary (op, operand)
+	(* If the current token is not an operator, it must be a primary expr. *)
+  | [< stream >] -> parse_primary stream
 
 (* binoprhs
  *   ::= ('+' primary)* *)
 and parse_bin_rhs expr_prec lhs stream =
   match Stream.peek stream with
-  (* If this is a binop, find its precedence. *)
+		(* If this is a binop, find its precedence. *)
 		| Some (Token.Kwd c) when Hashtbl.mem binop_precedence c ->
       let token_prec = precedence c in
 
@@ -95,8 +105,8 @@ and parse_bin_rhs expr_prec lhs stream =
         (* Eat the binop. *)
         Stream.junk stream;
 
-        (* Parse the primary expression after the binary operator. *)
-        let rhs = parse_primary stream in
+				(* Parse the unary expression after the binary operator. *)
+        let rhs = parse_unary stream in
 
         (* Okay, we know this is a binop. *)
         let rhs =
@@ -120,23 +130,51 @@ and parse_bin_rhs expr_prec lhs stream =
 (* expression
  *   ::= primary binoprhs *)
 and parse_expr = parser
-  | [< lhs=parse_primary; stream >] -> parse_bin_rhs 0 lhs stream
+  | [< lhs=parse_unary; stream >] -> parse_bin_rhs 0 lhs stream
 
 (* prototype
- *   ::= id '(' id* ')' *)
+ *   ::= id '(' id* ')'
+ *   ::= binary LETTER number? (id, id)
+ *   ::= unary LETTER number? (id) *)
 let parse_prototype =
   let rec parse_args accumulator = parser
     | [< 'Token.Ident id; e=parse_args (id::accumulator) >] -> e
     | [< >] -> accumulator
   in
-
+  let parse_operator = parser
+    | [< 'Token.Unary >] -> "unary", 1
+    | [< 'Token.Binary >] -> "binary", 2
+  in
+  let parse_binary_precedence = parser
+    | [< 'Token.Number n >] -> int_of_float n
+    | [< >] -> 30
+  in
   parser
 		| [< 'Token.Ident id;
-       'Token.Kwd '(' ?? "expected '(' in prototype";
-       args=parse_args [];
-       'Token.Kwd ')' ?? "expected ')' in prototype" >] ->
+				 'Token.Kwd '(' ?? "expected '(' in prototype";
+				 args=parse_args [];
+				 'Token.Kwd ')' ?? "expected ')' in prototype" >] ->
       (* success. *)
       Ast.Prototype (id, Array.of_list (List.rev args))
+				
+		| [< (prefix, kind)=parse_operator;
+				 'Token.Kwd op ?? "expected an operator";
+				 (* Read the precedence if present. *)
+				 binary_precedence=parse_binary_precedence;
+				 'Token.Kwd '(' ?? "expected '(' in prototype";
+         args=parse_args [];
+				 'Token.Kwd ')' ?? "expected ')' in prototype" >] ->
+			let name = prefix ^ (String.make 1 op) in
+			let args = Array.of_list (List.rev args) in
+
+			(* Verify right number of arguments for operator. *)
+			if Array.length args != kind
+			then raise (Stream.Error "invalid number of operands for operator")
+			else
+				if kind == 1 then
+					Ast.Prototype (name, args)
+				else
+					Ast.BinOpPrototype (name, args, binary_precedence)
 
 		| [< >] ->
       raise (Stream.Error "expected function name in prototype")
@@ -144,13 +182,13 @@ let parse_prototype =
 (* definition ::= 'def' prototype expression *)
 let parse_definition = parser
   | [< 'Token.Def; p=parse_prototype; e=parse_expr >] ->
-      Ast.Function (p, e)
+    Ast.Function (p, e)
 
 (* toplevelexpr ::= expression *)
 let parse_toplevel = parser
   | [< e=parse_expr >] ->
-      (* Make an anonymous proto. *)
-      Ast.Function (Ast.Prototype ("", [||]), e)
+    (* Make an anonymous proto. *)
+    Ast.Function (Ast.Prototype ("", [||]), e)
 
 (*  external ::= 'extern' prototype *)
 let parse_extern = parser
