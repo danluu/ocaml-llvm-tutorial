@@ -24,7 +24,7 @@ let rec codegen_expr = function
       match op with
 				| '+' -> build_fadd lhs_val rhs_val "addtmp" builder
 				| '-' -> build_fsub lhs_val rhs_val "subtmp" builder
-				| '/' -> build_fsub lhs_val rhs_val "divtmp" builder
+				| '/' -> build_fdiv lhs_val rhs_val "divtmp" builder
 				| '*' -> build_fmul lhs_val rhs_val "multmp" builder
 				| '<' ->
             (* Convert bool 0/1 to double 0.0 or 1.0 *)
@@ -77,7 +77,7 @@ let codegen_proto = function
     ) (params f);
     f
 
-let codegen_func = function
+let codegen_func the_fpm = function
   | Ast.Function (proto, body) ->
     Hashtbl.clear named_values;
     let the_function = codegen_proto proto in
@@ -94,6 +94,9 @@ let codegen_func = function
 
         (* Validate the generated code, checking for consistency. *)
       Llvm_analysis.assert_valid_function the_function;
+
+        (* Optimize the function. *)
+      let _ = PassManager.run_function the_function the_fpm in
 
       the_function
     with e ->
