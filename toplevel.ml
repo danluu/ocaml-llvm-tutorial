@@ -7,7 +7,7 @@ let rec main_loop stream =
   match Stream.peek stream with
 		| None -> ()
 
-  (* ignore top-level semicolons. *)
+		(* ignore top-level semicolons. *)
 		| Some (Token.Kwd ';') ->
       Stream.junk stream;
       main_loop stream

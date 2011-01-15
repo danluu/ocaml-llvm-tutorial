@@ -33,16 +33,16 @@ let rec parse_primary = parser
       | [< >] -> accumulator
     in
     let rec parse_ident id = parser
-        (* Call. *)
+      (* Call. *)
       | [< 'Token.Kwd '(';
-             args=parse_args [];
-             'Token.Kwd ')' ?? "expected ')'">] ->
-            Ast.Call (id, Array.of_list (List.rev args))
+           args=parse_args [];
+           'Token.Kwd ')' ?? "expected ')'">] ->
+        Ast.Call (id, Array.of_list (List.rev args))
 
-        (* Simple variable ref. *)
+      (* Simple variable ref. *)
       | [< >] -> Ast.Variable id
     in
-      parse_ident id stream
+    parse_ident id stream
 
   | [< >] -> raise (Stream.Error "unknown token when expecting an expression.")
 
@@ -50,7 +50,7 @@ let rec parse_primary = parser
  *   ::= ('+' primary)* *)
 and parse_bin_rhs expr_prec lhs stream =
   match Stream.peek stream with
-  (* If this is a binop, find its precedence. *)
+		(* If this is a binop, find its precedence. *)
 		| Some (Token.Kwd c) when Hashtbl.mem binop_precedence c ->
       let token_prec = precedence c in
 
@@ -97,9 +97,9 @@ let parse_prototype =
 
   parser
 		| [< 'Token.Ident id;
-       'Token.Kwd '(' ?? "expected '(' in prototype";
-       args=parse_args [];
-       'Token.Kwd ')' ?? "expected ')' in prototype" >] ->
+				 'Token.Kwd '(' ?? "expected '(' in prototype";
+				 args=parse_args [];
+				 'Token.Kwd ')' ?? "expected ')' in prototype" >] ->
       (* success. *)
       Ast.Prototype (id, Array.of_list (List.rev args))
 
@@ -109,13 +109,13 @@ let parse_prototype =
 (* definition ::= 'def' prototype expression *)
 let parse_definition = parser
   | [< 'Token.Def; p=parse_prototype; e=parse_expr >] ->
-      Ast.Function (p, e)
+    Ast.Function (p, e)
 
 (* toplevelexpr ::= expression *)
 let parse_toplevel = parser
   | [< e=parse_expr >] ->
       (* Make an anonymous proto. *)
-      Ast.Function (Ast.Prototype ("", [||]), e)
+    Ast.Function (Ast.Prototype ("", [||]), e)
 
 (*  external ::= 'extern' prototype *)
 let parse_extern = parser
